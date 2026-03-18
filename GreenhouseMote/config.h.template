@@ -8,6 +8,7 @@
 #define REPORTING_INTERVAL 900e6
 
 #define HTTP_HOST ""
+#define NAME "Mote"
 
 // Optimally, this hould be 32 bytes, high-entropy
 const uint8_t hmacKey[] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07};
