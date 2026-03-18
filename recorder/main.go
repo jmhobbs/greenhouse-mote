@@ -8,15 +8,14 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"time"
 )
 
 type PacketHeader struct {
 	Version uint32
-	Nonce   uint32
 }
 
 type SensorData struct {
+	Name        [16]byte
 	Error       int32
 	Temperature float32
 	Humidity    float32
@@ -30,14 +29,12 @@ const (
 	AM2302_ERROR_READ_FREQ int32 = -3
 )
 
-var recentNonces = make(map[uint32]time.Time)
-
 func main() {
 	http.HandleFunc("/update", func(w http.ResponseWriter, r *http.Request) {
 		log.Println("------------------------------------------------")
 		defer r.Body.Close()
 
-		headerBuf := make([]byte, 8)
+		headerBuf := make([]byte, 4)
 		n, err := r.Body.Read(headerBuf)
 		if err != nil {
 			log.Printf("error reading header: %v", err)
@@ -53,16 +50,8 @@ func main() {
 			return
 		}
 		fmt.Printf("Version: %d\n", header.Version)
-		fmt.Printf("Nonce: %d\n", header.Nonce)
 
-		previousNonceUse, ok := recentNonces[header.Nonce]
-		if ok && time.Since(previousNonceUse) < 5*time.Minute {
-			log.Printf("replay attack detected: nonce %d used at %v\n", header.Nonce, previousNonceUse)
-			http.Error(w, "replay attack detected", http.StatusUnauthorized)
-			return
-		}
-
-		data := make([]byte, 12)
+		data := make([]byte, 28)
 		n, err = r.Body.Read(data)
 		if err != nil {
 			log.Printf("error reading data: %v", err)
@@ -100,11 +89,10 @@ func main() {
 			return
 		}
 
+		fmt.Printf("Name: %s\n", pkt.Name)
 		fmt.Printf("Error: %d\n", pkt.Error)
 		fmt.Printf("Temperature: %.2f\n", pkt.Temperature)
 		fmt.Printf("Humidity: %.2f\n", pkt.Humidity)
-
-		recentNonces[header.Nonce] = time.Now()
 	})
 	http.ListenAndServe(":5050", nil)
 }

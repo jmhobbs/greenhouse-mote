@@ -44,23 +44,26 @@ const API = `https://api.cloudflare.com/client/v4/accounts/${env.ACCOUNT_ID}/ana
 
 router.post('/update', async (request, env, ctx): Promise<Response> => {
 	const buffer = await request.arrayBuffer();
-	const dv = new DataView(buffer, 0, 20)
+	const dv = new DataView(buffer, 0, 32)
 
 	var version = dv.getUint32(0, true);
 	if(version != 1) {
 		return new Response("Unsupported version", { status: 400 });
 	}
 
-	// var nonce = dv.getUint32(4, true);
-	var error = dv.getInt32(8, true);
+	var enc = new TextDecoder("utf-8");
+	var name = enc.decode(new Uint8Array(buffer, 4, 12)).replace(/\0/g, '');
+	console.log('Name:', name);
+
+	var error = dv.getInt32(20, true);
 	if(error != 0) {
 		console.error("Device reported error code: " + error);
 	} else {
-		var temperature = Math.floor(dv.getFloat32(12, true) * 100)/100;
-		var humidity = Math.floor(dv.getFloat32(16, true) * 100)/100;
-		var expectedSignature = new DataView(buffer, 20); // buffer.slice(20);
+		var temperature = Math.floor(dv.getFloat32(24, true) * 100)/100;
+		var humidity = Math.floor(dv.getFloat32(28, true) * 100)/100;
+		var expectedSignature = new DataView(buffer, 32);
 
-		const hmacValid = await crypto.subtle.verify("HMAC", key, expectedSignature, buffer.slice(0, 20));
+		const hmacValid = await crypto.subtle.verify("HMAC", key, expectedSignature, buffer.slice(0, 32));
 
 		if (!hmacValid) {
 			return new Response("Invalid HMAC signature", { status: 400 });

@@ -8,7 +8,7 @@
 
 struct SensorData {
   long version;
-  uint32_t nonce; 
+  char name[16];
   int32_t error; 
   float temperature; 
   float humidity; 
@@ -58,11 +58,8 @@ void setup() {
 }
 
 void loop() {
-  SensorData data = {0x01, 0, 0, 0.0, 0.0};
+  SensorData data = {0x01, NAME, 0, 0.0, 0.0};
   Packet packet;
-
-  // set nonce from hardware RNG
-  data.nonce = RANDOM_REG32;
 
   Serial.println("Reading sensor...");
   int8_t status = am2302.read();
