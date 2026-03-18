@@ -11,8 +11,35 @@ const key = await crypto.subtle.importKey(
 
 const router = AutoRouter()
 
-router.get('/', async () => {
-	return new Response("Hi, yes, hello.");
+const query = `
+SELECT
+	timestamp,
+	double1 AS temperature,
+	double2 AS humidity
+FROM 'greenhouse-mote-records'
+WHERE timestamp > NOW() - INTERVAL '1' DAY
+ORDER BY timestamp DESC
+`;
+
+const API = `https://api.cloudflare.com/client/v4/accounts/${env.ACCOUNT_ID}/analytics_engine/sql`;
+
+	router.get('/', async () => {
+	const queryResponse = await fetch(API, {
+		method: "POST",
+		headers: {
+			Authorization: `Bearer ${env.API_TOKEN}`,
+		},
+		body: query,
+	});
+
+	if (queryResponse.status != 200) {
+		console.error("Error querying:", await queryResponse.text());
+		return new Response("An error occurred!", { status: 500 });
+	}
+
+	const queryJSON = await queryResponse.json();
+	const rows = queryJSON.data.map(row => `[${row.timestamp}] Temperature: ${row.temperature}  Humidity: ${row.humidity}`);
+	return new Response(rows.join("\n"), { status: 200, headers: { "Content-Type": "text/plain" } });
 });
 
 router.post('/update', async (request, env, ctx): Promise<Response> => {
