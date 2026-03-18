@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"crypto/hmac"
+	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
 	"net/http"
@@ -29,7 +31,17 @@ func main() {
 		panic(err)
 	}
 
-	req, err := http.NewRequest("POST", "http://localhost:8787/", &buf)
+	mac := hmac.New(sha256.New, []byte{0, 1, 2, 3, 4, 5, 6, 7})
+	_, err = mac.Write(buf.Bytes())
+	if err != nil {
+		panic(err)
+	}
+	_, err = buf.Write(mac.Sum(nil))
+	if err != nil {
+		panic(err)
+	}
+
+	req, err := http.NewRequest("POST", "http://localhost:8787/update", &buf)
 	if err != nil {
 		panic(err)
 	}
