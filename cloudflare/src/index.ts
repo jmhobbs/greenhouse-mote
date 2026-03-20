@@ -1,4 +1,5 @@
 import { AutoRouter } from 'itty-router'
+import * as z from "zod";
 import { env } from "cloudflare:workers";
 
 const key = await crypto.subtle.importKey(
@@ -13,17 +14,140 @@ const router = AutoRouter()
 
 const query = `
 SELECT
-	timestamp,
+  timestamp AS datetime,
+	tounixtimestamp(timestamp) AS unixtimestamp,
 	double1 AS temperature,
 	double2 AS humidity
 FROM 'greenhouse-mote-records'
-WHERE timestamp > NOW() - INTERVAL '1' DAY
-ORDER BY timestamp DESC
+WHERE datetime > NOW() - INTERVAL '1' DAY
+ORDER BY datetime DESC
 `;
+
+const querySchema = z.object({
+	data: z.array(
+		z.object({
+			unixtimestamp: z.number(),
+			temperature: z.number(),
+			humidity: z.number(),
+		})
+	)
+});
 
 const API = `https://api.cloudflare.com/client/v4/accounts/${env.ACCOUNT_ID}/analytics_engine/sql`;
 
-	router.get('/', async () => {
+router.get('/', async () => {
+	return new Response(`<!doctype>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<title>Greenhouse Mote</title>
+		<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/alvaromontoro/almond.css@latest/dist/almond.lite.min.css" />
+		<script src="https://cdn.jsdelivr.net/npm/uplot@1.6.32/dist/uPlot.iife.min.js"></script>
+		<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.32/dist/uPlot.min.css">
+		<style>
+			#error {
+				background: pink;
+				padding: 5px;
+				border: 1px solid red;
+				border-radius: 5px;
+				display: none;
+			}
+		</style>
+	</head>
+	<body>
+		<h1>Greenhouse Mote</h1>
+		<div id="error"></div>
+		<h2>Last 24 Hours</h2>
+		<table>
+			<thead>
+				<tr>
+					<th>Min Temperature</th>
+					<th>Max Temperature</th>
+					<th>Min Humidity</th>
+					<th>Max Humidity</th>
+				</tr>
+			</thead>
+			<tbody>
+				<tr>
+					<td id="min-temperature"></td>
+					<td id="max-temperature"></td>
+					<td id="min-humidity"></td>
+					<td id="max-humidity"></td>
+				</tr>
+			</tbody>
+		</table>
+		<div id="chart"></div>
+
+
+	<script>
+		fetch('/recent.json')
+			.then(response => response.json())
+			.then(init)
+			.catch(e => {
+				console.error("Error fetching data:", e);
+				document.getElementById("error").textContent = "An error occurred while fetching data.";
+				document.getElementById("error").style.display = 'block';
+			})
+
+		function init(adata) {
+			document.getElementById("min-temperature").textContent = Math.min(...adata.temperature).toFixed(2) + "C";
+			document.getElementById("max-temperature").textContent = Math.max(...adata.temperature).toFixed(2) + "C";
+			document.getElementById("min-humidity").textContent = Math.min(...adata.humidity).toFixed(2) + "%";
+			document.getElementById("max-humidity").textContent = Math.max(...adata.humidity).toFixed(2) + "%";
+
+			const data = [
+				adata.x,
+				adata.temperature,
+				adata.humidity,
+			];
+
+			const size = getSize();
+
+			let opts = {
+				id: "chart1",
+				class: "my-chart",
+				width: size.width,
+				height: size.height,
+				series: [
+					{ show: false },
+					{
+						show: true,
+						spanGaps: false,
+						label: "Temperature",
+						value: (self, rawValue) => rawValue == null ? '' : rawValue.toFixed(2) + "C",
+						stroke: "red",
+						width: 1,
+					},
+					{
+						show: true,
+						spanGaps: false,
+						label: "Humidity",
+						value: (self, rawValue) => rawValue == null ? '' : rawValue.toFixed(2) + "%",
+						stroke: 'blue',
+						width: 1,
+					}
+				],
+			};
+
+			let plot = new uPlot(opts, data, document.getElementById('chart'));
+
+			function getSize() {
+				const rect = document.getElementById('chart').getBoundingClientRect();
+				return {
+					width: rect.width,
+					height: rect.width < 800 ? 400 : 600,
+				}
+			}
+
+			window.addEventListener("resize", e => { plot.setSize(getSize()); });
+		}
+	</script>
+	</body>
+</html>`, { headers: { 'content-type': 'text/html' }});
+})
+
+router.get('/recent.json', async () => {
 	const queryResponse = await fetch(API, {
 		method: "POST",
 		headers: {
@@ -37,9 +161,22 @@ const API = `https://api.cloudflare.com/client/v4/accounts/${env.ACCOUNT_ID}/ana
 		return new Response("An error occurred!", { status: 500 });
 	}
 
-	const queryJSON = await queryResponse.json();
-	const rows = queryJSON.data.map(row => `[${row.timestamp}] Temperature: ${row.temperature}  Humidity: ${row.humidity}`);
-	return new Response(rows.join("\n"), { status: 200, headers: { "Content-Type": "text/plain" } });
+	const rawJson = await queryResponse.json()
+	try{
+		const queryJSON = querySchema.parse(rawJson);
+
+		const x = queryJSON.data.map(row => row.unixtimestamp);
+		const yTemperature = queryJSON.data.map(row => row.temperature);
+		const yHumidity = queryJSON.data.map(row => row.humidity);
+
+		return Response.json({
+			x,
+			temperature: yTemperature,
+			humidity: yHumidity,
+		})
+	} catch(e) {
+		return Response.json({error: e, rawJson}, { status: 500 });
+	}
 });
 
 router.post('/update', async (request, env, ctx): Promise<Response> => {
@@ -53,7 +190,6 @@ router.post('/update', async (request, env, ctx): Promise<Response> => {
 
 	var enc = new TextDecoder("utf-8");
 	var name = enc.decode(new Uint8Array(buffer, 4, 12)).replace(/\0/g, '');
-	console.log('Name:', name);
 
 	var error = dv.getInt32(20, true);
 	if(error != 0) {
@@ -70,6 +206,7 @@ router.post('/update', async (request, env, ctx): Promise<Response> => {
 		}
 
 		env.RECORDS.writeDataPoint({
+			'blobs': [name],
 			'doubles': [temperature, humidity],
 		});
 	}
