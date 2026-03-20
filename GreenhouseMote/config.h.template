@@ -1,5 +1,8 @@
 #define SENSOR_PIN D2
 #define SENSOR_POWER_PIN D7
+#define SENSOR_TYPE DHT11
+
+#define NAME "Mote"
 
 #define WIFI_SSID ""
 #define WIFI_PASSWORD ""
@@ -8,7 +11,9 @@
 #define REPORTING_INTERVAL 900e6
 
 #define HTTP_HOST ""
-#define NAME "Mote"
+// Get this from tls.h after generating
+#define ROOT_CERT cert_WE1
 
 // Optimally, this hould be 32 bytes, high-entropy
+// Think `head -c 32 /dev/random | xxd -p -c 32`
 const uint8_t hmacKey[] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07};
