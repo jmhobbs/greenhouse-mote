@@ -16,7 +16,6 @@
 		}
 	],
 	"vars": {
-		"HMAC_SECRET": "AAECAwQFBgc=",
 		"ACCOUNT_ID": "012345678901234567890123456789012"
 	}
 }

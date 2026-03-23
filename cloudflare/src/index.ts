@@ -4,7 +4,7 @@ import { env } from "cloudflare:workers";
 
 const key = await crypto.subtle.importKey(
 	"raw",
-	Uint8Array.fromBase64(env.HMAC_SECRET),
+	Uint8Array.fromBase64(env.HMAC_SECRET_KEY),
 	{ name: "HMAC", hash: {name: "SHA-256"} },
 	false,
 	["verify"]
