@@ -14,26 +14,24 @@ const router = AutoRouter()
 
 const query = `
 SELECT
-  timestamp AS datetime,
-	tounixtimestamp(timestamp) AS unixtimestamp,
-	double1 AS temperature,
-	double2 AS humidity
-FROM 'greenhouse-mote-records'
-WHERE datetime > NOW() - INTERVAL '1' DAY
-ORDER BY datetime DESC
+	unixepoch(Timestamp) AS timestamp,
+	Temperature AS temperature,
+	Humidity AS humidity
+FROM Records
+WHERE Timestamp > datetime('now', '-1 day')
+ORDER BY Timestamp DESC
 `;
 
 const querySchema = z.object({
-	data: z.array(
+	results: z.array(
 		z.object({
-			unixtimestamp: z.number(),
+			timestamp: z.number(),
 			temperature: z.number(),
 			humidity: z.number(),
 		})
 	)
 });
 
-const API = `https://api.cloudflare.com/client/v4/accounts/${env.ACCOUNT_ID}/analytics_engine/sql`;
 
 router.get('/', async () => {
 	return new Response(`<!doctype>
@@ -148,26 +146,18 @@ router.get('/', async () => {
 })
 
 router.get('/recent.json', async () => {
-	const queryResponse = await fetch(API, {
-		method: "POST",
-		headers: {
-			Authorization: `Bearer ${env.API_TOKEN}`,
-		},
-		body: query,
-	});
+	try {
+		const response = await env.database.prepare(query).run();
+		if(response.success !== true) {
+			console.error(response);
+			return Response.json({error: 'query failed'}, { status: 500 });
+		}
 
-	if (queryResponse.status != 200) {
-		console.error("Error querying:", await queryResponse.text());
-		return new Response("An error occurred!", { status: 500 });
-	}
+		const queryJSON = querySchema.parse(response);
 
-	const rawJson = await queryResponse.json()
-	try{
-		const queryJSON = querySchema.parse(rawJson);
-
-		const x = queryJSON.data.map(row => row.unixtimestamp);
-		const yTemperature = queryJSON.data.map(row => row.temperature);
-		const yHumidity = queryJSON.data.map(row => row.humidity);
+		const x = queryJSON.results.map(row => row.timestamp);
+		const yTemperature = queryJSON.results.map(row => row.temperature);
+		const yHumidity = queryJSON.results.map(row => row.humidity);
 
 		return Response.json({
 			x,
@@ -175,7 +165,7 @@ router.get('/recent.json', async () => {
 			humidity: yHumidity,
 		})
 	} catch(e) {
-		return Response.json({error: e, rawJson}, { status: 500 });
+		return Response.json({error: e}, { status: 500 });
 	}
 });
 
@@ -205,10 +195,7 @@ router.post('/update', async (request, env, ctx): Promise<Response> => {
 			return new Response("Invalid HMAC signature", { status: 400 });
 		}
 
-		env.RECORDS.writeDataPoint({
-			'blobs': [name],
-			'doubles': [temperature, humidity],
-		});
+		await env.database.prepare('INSERT INTO Records (Name, Temperature, Humidity) VALUES (?, ?, ?)').bind(name, temperature, humidity).run();
 	}
 
 	return new Response("OK");
