@@ -9,10 +9,12 @@
 	"compatibility_flags": [
 		"nodejs_compat"
 	],
-	"analytics_engine_datasets": [
+	"d1_databases": [
 		{
-			"binding": "RECORDS",
-			"dataset": "records"
+			"binding": "database",
+			"database_name": "greenhouse-mote",
+			"database_id": "00000000-1111-2222-3333-444444444444",
+			"remote": false
 		}
 	],
 	"vars": {

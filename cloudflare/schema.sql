@@ -1,0 +1,8 @@
+DROP TABLE IF EXISTS Records;
+CREATE TABLE IF NOT EXISTS Records (
+	ID INTEGER PRIMARY KEY,
+	Name TEXT NOT NULL,
+	Temperature REAL NOT NULL,
+	Humidity REAL NOT NULL,
+	Timestamp TEXT NOT NULL DEFAULT current_timestamp
+	);
